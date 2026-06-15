@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>HỆ THỐNG MÁY ẤP TRỨNG PID-FUZZY</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f9f9f9; }
+    header { background-color:#004080; color:yellow; text-align:center; padding:20px; font-size:36px; margin-bottom:10px; font-weight:bold; }
+    .logo-left { position:absolute; top:5px; left:20px; height:70px; }
+    .top-bar { display:flex; align-items:center; padding:10px 20px; background:#ffffff; }
+    .mode-buttons { flex:1; display:flex; justify-content:center; }
+    .mode-buttons button { margin:0 20px; padding:10px 20px; font-size:16px; border:none; border-radius:8px; background:#004080; color:white; cursor:pointer; transition:0.3s; }
+    .mode-buttons button.active { background:red; }
+    .mode-buttons button:hover { background:#0066cc; }
+    .export-button { margin-left:auto; }
+    .export-button button { padding:10px 20px; font-size:16px; border:none; border-radius:8px; background:#008000; color:white; cursor:pointer; }
+    .export-button button:hover { background:#00b300; }
+    .set-bar { display:flex; justify-content:center; gap:40px; margin:10px 0; }
+    .set-group { display:flex; align-items:center; gap:8px; font-size:16px; }
+    .set-group input { width:60px; text-align:center; font-weight:bold; font-size:16px; }
+    .set-group button { min-width:40px; padding:8px; font-size:16px; border:none; border-radius:5px; background:#004080; color:white; cursor:pointer; }
+    .set-group button:hover { background:#0066cc; }
+    .status-section { display:flex; justify-content:space-around; align-items:center; flex-wrap:nowrap; font-size:16px; margin:15px; overflow-x:auto; gap:15px; }
+    #temp { color:red; font-weight:bold; }
+    #hum { color:blue; font-weight:bold; }
+    .relay { display:flex; align-items:center; gap:8px; font-size:16px; }
+    .led { width:20px; height:20px; border-radius:50%; background-color:gray; display:inline-block; }
+    .blink { animation: blink 1s infinite; }
+    @keyframes blink { 0%{opacity:1;} 50%{opacity:0.2;} 100%{opacity:1;} }
+    .pid-section {text-align: center;font-size: 16px;margin: 10px 0;}
+    .charts { display:flex; justify-content:space-around; margin:20px; }
+    .charts canvas { flex:1; max-width:45%; height:450px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="logo1.png" alt="Logo 1" class="logo-left">
+    HỆ THỐNG MÁY ẤP TRỨNG PID-FUZZY
+  </header>
+
+  <div class="top-bar">
+    <div class="mode-buttons">
+  <button onclick="sendCommand(0)">Tự chỉnh</button>
+  <button onclick="sendCommand(1)">Ấp gà</button>
+  <button onclick="sendCommand(2)">Ấp vịt</button>
+  <button onclick="sendCommand(3)">Ấp cút</button>
+  <button onclick="sendCommand(4)">Ấp ngỗng</button>
+</div>
+
+    <div class="export-button"><button onclick="exportExcel()">Xuất Excel</button></div>
+  </div>
+
+  <div class="set-bar">
+    <div class="set-group">
+      <label>Nhiệt độ:</label>
+      <button onclick="adjustValue('setTemp', -0.5)">-</button>
+      <input type="number" id="setTemp" value="32" step="0.5"> °C
+      <button onclick="adjustValue('setTemp', 0.5)">+</button>
+    </div>
+    <div class="set-group">
+      <label>Độ ẩm:</label>
+      <button onclick="adjustValue('setHum', -0.5)">-</button>
+      <input type="number" id="setHum" value="60" step="0.5"> %
+      <button onclick="adjustValue('setHum', 0.5)">+</button>
+    </div>
+    <div class="set-group">
+      <label>Thời gian đảo:</label>
+      <button onclick="adjustValue('setTurn', -1)">-</button>
+      <input type="number" id="setTurn" value="120" step="1"> phút
+      <button onclick="adjustValue('setTurn', 1)">+</button>
+    </div>
+  </div>
+
+  <div class="status-section">
+    <div>Nhiệt độ: <span id="temp">--</span> °C (Set: <span id="setTempDisplay">--</span> °C)</div>
+    <div>Độ ẩm: <span id="hum">--</span> % (Set: <span id="setHumDisplay">--</span> %)</div>
+    <div>Thời gian đảo: <span id="setTurnDisplay">--</span> phút | Còn lại: <span id="remainTurn">--:--:--</span></div>
+    <div>Ngày ấp: <span id="dayIncubate">--</span></div>
+    <div>Chế độ: <span id="modeName">--</span></div>
+    <div>Cập nhật lúc: <span id="lastUpdate">--:--:--</span></div>
+    <div class="relay"><span class="led" id="relayHumi"></span> Ẩm</div>
+    <div class="relay"><span class="led" id="relayFan"></span> Hút</div>
+    <div class="relay"><span class="led" id="relayTurn"></span> Đảo</div>
+  </div>
+
+  <div class="pid-section">
+    <div>Kp: <span id="kp">--</span> | Ki: <span id="ki">--</span> | Kd: <span id="kd">--</span> | Output: <span id="output">--</span></div>
+  </div>
+
+
+  <div class="charts">
+    <canvas id="tempChart"></canvas>
+    <canvas id="humChart"></canvas>
+  </div>
+
+  <div class="charts">
+    <canvas id="outputChart"></canvas>
+    <canvas id="pidChart"></canvas>
+  </div>
+
+  <script>
+    let tempData = [], humData = [];
+    let currentMode = "tuychinh";
+    let setTempData = [], setHumData = [];
+
+    // Biểu đồ nhiệt độ với setpoint
+    const tempChart = new Chart(document.getElementById('tempChart'), {
+      type: 'line',
+      data: {
+        datasets: [
+          { label: 'NHIỆT ĐỘ (°C)', data: [], borderColor: 'red', fill: false, pointRadius: 0 },
+          { label: 'Setpoint Nhiệt độ', data: [], borderColor: 'green', borderDash: [5,5], fill: false, pointRadius: 0 }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'time', time: { unit: 'second' } },
+          y: { min: 30, max: 45, ticks: { stepSize: 0.5 }, title: { display: true, text: '°C' } }
+        }
+      }
+    });
+
+    // Biểu đồ độ ẩm với setpoint
+    const humChart = new Chart(document.getElementById('humChart'), {
+      type: 'line',
+      data: {
+        datasets: [
+          { label: 'ĐỘ ẨM (%)', data: [], borderColor: 'blue', fill: false, pointRadius: 0 },
+          { label: 'Setpoint Độ ẩm', data: [], borderColor: 'orange', borderDash: [5,5], fill: false, pointRadius: 0 }
+        ]
+      },
+      options: {
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'time', time: { unit: 'second' } },
+          y: { min: 40, max: 80, ticks: { stepSize: 0.5 }, title: { display: true, text: '%' } }
+        }
+      }
+    });
+
+// Biểu đồ Output
+const outputChart = new Chart(document.getElementById('outputChart'), {
+  type: 'line',
+  data: { datasets: [{ label: 'Output (ms)', data: [], borderColor: 'purple', fill: false, pointRadius: 0 }] },
+  options: {
+    maintainAspectRatio: false,
+    scales: {
+      x: { type: 'time', time: { unit: 'second' } },
+      y: { min: 0, max: 1000, title: { display: true, text: 'ms' } }
+    }
+  }
+});
+
+// Biểu đồ PID (Kp, Ki, Kd)
+const pidChart = new Chart(document.getElementById('pidChart'), {
+  type: 'line',
+  data: {
+    datasets: [
+      { label: 'Kp', data: [], borderColor: 'red', fill: false, pointRadius: 0 },
+      { label: 'Ki', data: [], borderColor: 'green', fill: false, pointRadius: 0 },
+      { label: 'Kd', data: [], borderColor: 'blue', fill: false, pointRadius: 0 }
+    ]
+  },
+  options: {
+    maintainAspectRatio: false,
+    scales: {
+      x: { type: 'time', time: { unit: 'second' } },
+      y: { title: { display: true, text: 'PID values' } }
+    }
+  }
+});
+
+
+function updateChartsWindow() {
+  const now = Date.now();
+  const charts = [tempChart, humChart, outputChart, pidChart];
+
+  charts.forEach(chart => {
+    chart.options.scales.x.min = undefined; //now - 20 * 60 * 1000; // undefined
+    chart.options.scales.x.max = now;                      
+    chart.update();
+  });
+}
+
+
+
+// Kết nối tới MQTT broker HiveMQ Cloud (WebSocket Secure port 8884)
+const options = { username: "khaiutc2", password: "Khai1610" };
+const client = mqtt.connect("wss://427891f686ab499fa2fef547e99b1e33.s1.eu.hivemq.cloud:8884/mqtt", options);
+    client.on("connect", () => {
+  console.log("Đã kết nối HiveMQ Cloud");
+  client.subscribe("esp32/data");
+});
+
+    // Hàm publish lệnh lên broker
+function sendCommand(modeValue = currentMode) {
+  currentMode = modeValue; // lưu lại mode hiện tại (số 0–4)
+  const payload = {
+    setTemp: parseFloat(document.getElementById("setTemp").value),
+    setHumi: parseFloat(document.getElementById("setHum").value),
+    turn: parseInt(document.getElementById("setTurn").value),
+    mode: modeValue   // gửi số 0–4
+  };
+  client.publish("web/data", JSON.stringify(payload));
+  console.log("Đã gửi lệnh:", payload);
+}
+
+
+    // Hàm tăng/giảm giá trị và publish
+    function adjustValue(id, delta) {
+      const input = document.getElementById(id);
+      let value = parseFloat(input.value);
+      value += delta;
+      if (id === "setTemp") {
+        input.value = value.toFixed(1); // nhiệt độ làm tròn 1 số thập phân
+      } else {
+        input.value = value.toFixed(1); // độ ẩm và thời gian đảo giữ nguyên số nguyên
+      }
+      sendCommand(); // publish lại với mode hiện tại
+    }
+
+    function updateLed(id, state, color) {
+      const led = document.getElementById(id);
+      if (state) {
+        led.style.backgroundColor = color;
+        led.classList.add("blink");
+      } else {
+        led.style.backgroundColor = "gray";
+        led.classList.remove("blink");
+      }
+    }
+
+
+    // Xuất Excel với lịch sử setpoint
+    function exportExcel() {
+      const rows = [["Thời gian", "Nhiệt độ cài đặt (°C)", "Nhiệt độ (°C)", "Độ ẩm cài đặt (%)", "Độ ẩm (%)"]];
+      const length = Math.min(tempData.length, humData.length, setTempData.length, setHumData.length);
+
+      for (let i = 0; i < length; i++) {
+        const time = new Date(tempData[i].x).toLocaleString();
+        const temp = tempData[i].y;
+        const hum = humData[i].y;
+        const setTemp = setTempData[i].y;
+        const setHum = setHumData[i].y;
+        rows.push([time, setTemp, temp, setHum, hum]);
+      }
+
+      const worksheet = XLSX.utils.aoa_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+      XLSX.writeFile(workbook, "incubator_data.xlsx");
+    }
+
+    // Lắng nghe dữ liệu MQTT từ ESP32
+    client.on("message", (topic, message) => {
+      if (topic === "esp32/data") {
+        try {
+          const data = JSON.parse(message.toString());
+          const now = Date.now();
+
+          // Cập nhật hiển thị
+          document.getElementById("temp").textContent = data.temp.toFixed(2);
+          document.getElementById("hum").textContent = data.humi.toFixed(2);
+          document.getElementById("setTempDisplay").textContent = data.setTemp.toFixed(1);
+          document.getElementById("setHumDisplay").textContent = data.setHumi.toFixed(1);
+          document.getElementById("setTurnDisplay").textContent = data.turn;
+          document.getElementById("dayIncubate").textContent = data.ngayAp;
+          document.getElementById("modeName").textContent = data.label;
+          document.getElementById("lastUpdate").textContent = new Date(now).toLocaleTimeString();
+          document.getElementById("kp").textContent = data.Kp.toFixed(3);
+          document.getElementById("ki").textContent = data.Ki.toFixed(4);
+          document.getElementById("kd").textContent = data.Kd.toFixed(2);
+          document.getElementById("output").textContent = data.Output.toFixed(0);
+
+          // Biểu đồ Output
+          outputChart.data.datasets[0].data.push({ x: now, y: data.Output });
+          if (outputChart.data.datasets[0].data.length > 200) outputChart.data.datasets[0].data.shift();
+          outputChart.update();
+
+          // Biểu đồ PID
+          pidChart.data.datasets[0].data.push({ x: now, y: data.Kp });
+          pidChart.data.datasets[1].data.push({ x: now, y: data.Ki });
+          pidChart.data.datasets[2].data.push({ x: now, y: data.Kd });
+          if (pidChart.data.datasets[0].data.length > 200) {
+            pidChart.data.datasets.forEach(ds => ds.data.shift());
+          }
+          pidChart.update();
+
+          // Push dữ liệu đồng bộ
+          tempData.push({ x: now, y: data.temp });
+          humData.push({ x: now, y: data.humi });
+          setTempData.push({ x: now, y: data.setTemp });
+          setHumData.push({ x: now, y: data.setHumi });
+
+          // Giới hạn độ dài
+          if (tempData.length > 200) tempData.shift();
+          if (humData.length > 200) humData.shift();
+          if (setTempData.length > 200) setTempData.shift();
+          if (setHumData.length > 200) setHumData.shift();
+
+          // Dataset chính và setpoint
+          tempChart.data.datasets[0].data = tempData;
+          tempChart.data.datasets[1].data = setTempData;
+          humChart.data.datasets[0].data = humData;
+          humChart.data.datasets[1].data = setHumData;
+
+          tempChart.update();
+          humChart.update();
+
+          // Khung thời gian
+          updateChartsWindow();
+
+          // LED relay
+          updateLed("relayHumi", data.relayHumi === 1, "blue");
+          updateLed("relayFan", data.relayFan === 1, "red");
+          updateLed("relayTurn", data.relayTurn === 1, "orange");
+
+        } catch (e) {
+          console.error("Lỗi parse dữ liệu:", e);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

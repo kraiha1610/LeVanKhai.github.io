@@ -103,14 +103,4 @@ void controlSystem() {
   Serial.print(" | Kp:"); Serial.print(current_Kp,3);
   Serial.print(" | Ki:"); Serial.print(current_Ki,4);
   Serial.print(" | Kd:"); Serial.println(current_Kd,2);
-
-  /*lcd.setCursor(0,0);
-  lcd.print("T:"); lcd.print(Input,2); lcd.print("C H:"); lcd.print(hum,1); lcd.print("%   ");
-  lcd.setCursor(0,1);
-  lcd.print("Sp:"); lcd.print(setTemp,2); lcd.print("C Kp:"); lcd.print(current_Kp,2);
-  lcd.setCursor(0,2);
-  lcd.print("Ki:"); lcd.print(current_Ki,4); lcd.print(" Kd:"); lcd.print(current_Kd,1);
-  lcd.setCursor(0,3);
-  int power_percent = (int)(Output/10);
-  lcd.print("Power: "); lcd.print(power_percent); lcd.print("% ("); lcd.print((int)Output); lcd.print("ms)");*/
 }

@@ -106,6 +106,8 @@
     let tempData = [], humData = [];
     let currentMode = "tuychinh";
     let setTempData = [], setHumData = [];
+    let remainSeconds = 0;
+    let countdownInterval = null;
 
     // Biểu đồ nhiệt độ với setpoint
     const tempChart = new Chart(document.getElementById('tempChart'), {
@@ -175,6 +177,27 @@ const pidChart = new Chart(document.getElementById('pidChart'), {
   }
 });
 
+function startCountdown(minutes) {
+  // reset
+  if (countdownInterval) clearInterval(countdownInterval);
+
+  remainSeconds = minutes * 60;
+
+  countdownInterval = setInterval(() => {
+    if (remainSeconds <= 0) {
+      clearInterval(countdownInterval);
+      document.getElementById("remainTurn").textContent = "00:00:00";
+      return;
+    }
+    remainSeconds--;
+
+    const h = String(Math.floor(remainSeconds / 3600)).padStart(2, '0');
+    const m = String(Math.floor((remainSeconds % 3600) / 60)).padStart(2, '0');
+    const s = String(remainSeconds % 60).padStart(2, '0');
+
+    document.getElementById("remainTurn").textContent = `${h}:${m}:${s}`;
+  }, 1000);
+}
 
 function updateChartsWindow() {
   const now = Date.now();
@@ -311,6 +334,7 @@ function sendCommand(modeValue = currentMode) {
 
           tempChart.update();
           humChart.update();
+          startCountdown(data.turn);
 
           // Khung thời gian
           updateChartsWindow();

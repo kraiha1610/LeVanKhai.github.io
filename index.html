@@ -321,10 +321,10 @@ function sendCommand(modeValue = currentMode) {
           setHumData.push({ x: now, y: data.setHumi });
 
           // Giới hạn độ dài
-          if (tempData.length > 200) tempData.shift();
-          if (humData.length > 200) humData.shift();
-          if (setTempData.length > 200) setTempData.shift();
-          if (setHumData.length > 200) setHumData.shift();
+          if (tempData.length > 1000) tempData.shift();
+          if (humData.length > 1000) humData.shift();
+          if (setTempData.length > 1000) setTempData.shift();
+          if (setHumData.length > 1000) setHumData.shift();
 
           // Dataset chính và setpoint
           tempChart.data.datasets[0].data = tempData;
